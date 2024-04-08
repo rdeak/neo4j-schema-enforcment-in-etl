@@ -1,0 +1,4 @@
+documents:
+  - 'api/graphql/**/*.graphql'
+  #- api/node_modules/@neo4j/graphql/dist
+schema: http://localhost:4000

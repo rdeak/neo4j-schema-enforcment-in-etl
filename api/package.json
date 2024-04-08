@@ -1,0 +1,29 @@
+{
+  "name": "neo4j-api",
+  "version": "1.0.0",
+  "description": "Neo4j Graphql API",
+  "type": "module",
+  "main": "dist/index.js",
+  "private": false,
+  "scripts": {
+    "predev": "tsc",
+    "dev": "pnpm run \"/dev:/\"",
+    "dev:tsc": "tsc --watch --preserveWatchOutput",
+    "dev:node": "node --env-file=.env --enable-source-maps --inspect --watch dist/index.js",
+    "start": "node dist/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.10.2",
+    "@graphql-tools/load-files": "^7.0.0",
+    "@neo4j/graphql": "^5.3.2",
+    "graphql": "^16.8.1",
+    "neo4j-driver": "^5.19.0"
+  },
+  "devDependencies": {
+    "@neo4j/introspector": "^3.0.0",
+    "@types/node": "^20.12.4",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.4"
+  }
+}

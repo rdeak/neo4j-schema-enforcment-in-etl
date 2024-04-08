@@ -1,0 +1,48 @@
+type Invoice
+@query(read: true, aggregate: false)
+{
+    id: ID! @unique(constraintName: "invoice_unique_idx")
+    issued: Date
+    """
+    Point of sale identifier
+    """
+    pos: String
+    items: [InvoiceItem!]! @relationship(type: "BELONGS_TO", direction: IN, properties: "BelongsTo")
+}
+
+type InvoiceItem
+@query(read:true, aggregate: true)
+@node(labels: ["InvoiceItem", "PGInvoice"])
+{
+    price: Float!
+    quantity: Int!
+    total: Float @deprecated(reason: "will be removed soon")
+    invoiceId: ID!
+    itemId: ID!
+    invoice: Invoice! @relationship(type: "BELONGS_TO", direction: OUT, properties: "BelongsTo")
+}
+
+type BelongsTo
+@relationshipProperties
+{
+    date: Date
+}
+
+type Mutation {
+    upsertInvoices(input: InvoiceUpdateInput!): [Invoice!]!
+    @cypher(
+        statement:
+        """
+        MERGE (invoice:Invoice {no: $input.no})
+        ON CREATE SET
+            invoice.no = $input.no,
+            invoice.issued = $input.issued,
+            invoice.pos = $input.pos
+        ON MATCH SET
+            invoice.issued = $input.issued,
+            invoice.pos = $input.pos
+        RETURN invoice
+        """,
+        columnName: "invoice"
+    )
+}

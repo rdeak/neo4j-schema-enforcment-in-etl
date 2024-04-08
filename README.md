@@ -12,10 +12,10 @@ This repo contains example how enforce neo4j database schema with Graphql API in
    ```cypher
    :use system;
    create database data
-   ``` 
-6. Activate nvm ``
+   ``
 7. In `api` directory run
    ```bash 
+   nvm use
    pnpm install
    pnpm dev
    ```

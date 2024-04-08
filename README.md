@@ -13,6 +13,12 @@ This repo contains example how enforce neo4j database schema with Graphql API in
    :use system;
    create database data
    ``` 
+6. Activate nvm ``
+7. In `api` directory run
+   ```bash 
+   pnpm install
+   pnpm dev
+   ```
 
 To remove all just run
 `docker compose down --volumes --rmi all`

@@ -1,18 +1,16 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
+from airflow.models import Variable
 from airflow.utils.dates import days_ago
+from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import timedelta
-import pandas as pd
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
-from sqlalchemy import create_engine
-from airflow.models import Variable
 import json
 
 
 def load_invoices_from_pg(**kwargs):
-    db_conn_uri = Variable.get("pg_conn")
-    engine = create_engine(db_conn_uri)
+    postgresHook = PostgresHook(postgres_conn_id="pg_conn")
 
     query = """
         SELECT 
@@ -35,13 +33,14 @@ def load_invoices_from_pg(**kwargs):
         GROUP BY i.id
     """
 
-    df = pd.read_sql(query, engine)
+    df = postgresHook.get_pandas_df(sql=query)
     kwargs['ti'].xcom_push(key='invoice_data', value=df.to_json(orient='records'))
 
 
 def save_invoices_to_neo4j(**kwargs):
+    graphql_api_url = Variable.get("graphql_api_url")
     # TODO move to Airflow connection
-    transport = RequestsHTTPTransport(url='http://localhost:4000', use_json=True)
+    transport = RequestsHTTPTransport(url=graphql_api_url, use_json=True)
     client = Client(transport=transport, fetch_schema_from_transport=True)
 
     mutation = gql("""

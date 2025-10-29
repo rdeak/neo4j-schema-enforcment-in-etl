@@ -15,7 +15,7 @@ type InvoiceItem
 @node(labels: ["InvoiceItem", "PGInvoice"])
 {
     price: Float!
-    quantity: Int!
+    quantity: Float!
     total: Float @deprecated(reason: "will be removed soon")
     invoiceId: ID!
     itemId: ID!

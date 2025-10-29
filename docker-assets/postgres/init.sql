@@ -1,4 +1,3 @@
-
 CREATE TABLE invoices (
     id SERIAL PRIMARY KEY,
     issue_date DATE,

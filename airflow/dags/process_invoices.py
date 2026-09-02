@@ -1,11 +1,10 @@
+from __future__ import annotations
+
 from airflow.decorators import dag, task
-from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.hooks.base import BaseHook
 from datetime import datetime, timedelta
-from gql import Client, gql
-from gql.transport.requests import RequestsHTTPTransport
 import logging
-import pandas as pd
+
+from isolated_task import isolated_task
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,23 @@ default_args = {
 def process_invoices_dag():
 
     @task
-    def extract_invoices() -> list[dict]:
+    def resolve_connections() -> dict:
+        from airflow.hooks.base import BaseHook
+        from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+        return {
+            "pg_uri": PostgresHook(postgres_conn_id="app_pg_conn").get_uri(),
+            "api_url": BaseHook.get_connection("api_graphql_conn").host,
+        }
+
+    @isolated_task
+    def extract_invoices(conn: dict) -> list[dict]:
+        import logging
+        import pandas as pd
+        from sqlalchemy import create_engine
+
+        logger = logging.getLogger(__name__)
+
         try:
             query = """
                 SELECT
@@ -56,10 +71,10 @@ def process_invoices_dag():
                 ORDER BY i.id
             """
 
-            pg_hook = PostgresHook(postgres_conn_id="app_pg_conn")
+            engine = create_engine(conn["pg_uri"])
 
             logger.info("Extracting invoices from PostgreSQL")
-            df = pg_hook.get_pandas_df(sql=query)
+            df = pd.read_sql(sql=query, con=engine)
 
             logger.info(f"Extracted {len(df)} invoices from PostgreSQL")
             return df.to_dict('records')
@@ -68,17 +83,21 @@ def process_invoices_dag():
             logger.error(f"Failed to extract invoices: {str(e)}")
             raise
 
-    @task
-    def load_to_neo4j(invoices: list[dict]) -> dict:
+    @isolated_task
+    def load_to_neo4j(conn: dict, invoices: list[dict]) -> dict:
+        import logging
+        from gql import Client, gql
+        from gql.transport.requests import RequestsHTTPTransport
+
+        logger = logging.getLogger(__name__)
+
         if not invoices:
             logger.info("No invoices to process")
             return {"processed": 0, "failed": 0}
 
         try:
-            graphql_conn = BaseHook.get_connection('api_graphql_conn')
-
             transport = RequestsHTTPTransport(
-                url=graphql_conn.host,
+                url=conn["api_url"],
                 use_json=True,
             )
             client = Client(transport=transport, fetch_schema_from_transport=True)
@@ -108,14 +127,15 @@ def process_invoices_dag():
                 logger.info(result)
 
             logger.info(f"Load complete: {len(invoices)}")
-
+            return {"processed": len(invoices), "failed": 0}
 
         except Exception as e:
             logger.error(f"Failed to load invoices: {str(e)}")
             raise
 
-    invoices = extract_invoices()
-    load_to_neo4j(invoices)
+    conn = resolve_connections()
+    invoices = extract_invoices(conn)
+    load_to_neo4j(conn, invoices)
 
 
 dag_instance = process_invoices_dag()

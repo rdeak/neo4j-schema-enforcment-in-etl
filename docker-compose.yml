@@ -3,6 +3,10 @@ x-airflow-common:
   image: my-airflow:local
   build:
     context: ./airflow
+    dockerfile: Dockerfile
+  env_file:
+    - path: ./airflow/.env
+      required: false
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -12,19 +16,24 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__WEBSERVER__SECRET_KEY: 'your-secret-key-minimum-16-characters'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
   volumes:
     - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/common:/opt/airflow/common
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/scripts:/opt/airflow/scripts
     - airflow-logs:/opt/airflow/logs
-  user: "50000:0"
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
-    - postgres
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
 
 services:
   api:
     build:
       context: ./api
+    restart: always
     environment:
       NEO4J_USER: neo4j
       NEO4J_PASS: password
@@ -32,12 +41,21 @@ services:
       NEO4J_BASE: data
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/').then(r => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
     depends_on:
       neo4j:
         condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
 
   neo4j:
     image: neo4j:5.18-enterprise
+    restart: always
     environment:
       NEO4J_AUTH: neo4j/password
       NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
@@ -57,6 +75,7 @@ services:
 
   neo4j-init:
     image: neo4j:5.18-enterprise
+    restart: "no"
     depends_on:
       neo4j:
         condition: service_healthy
@@ -72,6 +91,7 @@ services:
 
   postgres:
     image: postgres:16.2
+    restart: always
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -91,25 +111,39 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    restart: "no"
     entrypoint: /bin/bash
     command: /opt/airflow/scripts/init-airflow.sh
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   airflow-webserver:
     <<: *airflow-common
     command: webserver
+    restart: always
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
+      <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
+      <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 

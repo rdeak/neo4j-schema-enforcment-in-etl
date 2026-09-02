@@ -23,9 +23,6 @@ importers:
       neo4j-driver:
         specifier: ^5.19.0
         version: 5.28.2
-      tsx:
-        specifier: 4.20.6
-        version: 4.20.6
     devDependencies:
       '@neo4j/introspector':
         specifier: ^3.0.0
@@ -36,6 +33,9 @@ importers:
       prettier:
         specifier: ^3.2.5
         version: 3.6.2
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
       typescript:
         specifier: ^5.4.4
         version: 5.9.3

@@ -1,14 +1,7 @@
-# Dependencies for the isolated ETL virtualenv (/opt/venvs/etl) built in the
-# Dockerfile - not for the Airflow scheduler/webserver environment. Tasks
-# decorated with @isolated_task run against this interpreter.
-
-# Pinned to the versions apache/airflow:2.7.3 ships, so arguments and
-# return values pickled by Airflow round-trip through the venv unchanged.
 pendulum==2.1.2
 lazy-object-proxy==1.9.0
 dill==0.3.1.1
 
-# ETL task dependencies. gql needs the requests extra for RequestsHTTPTransport.
 gql[requests]==4.0.0
 pandas==2.3.3
 psycopg2-binary>=2.9.9

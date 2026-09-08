@@ -2,3 +2,7 @@ dist
 node_modules
 .idea
 .venv
+__pycache__/
+.pytest_cache/
+.airflow-home/
+*.egg-info/

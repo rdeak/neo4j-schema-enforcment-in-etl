@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from airflow.decorators import dag, task
 from datetime import datetime, timedelta
 import logging
 
-from isolated_task import isolated_task
+from airflow.decorators import dag, task
+
+from operators.isolated_task import isolated_task
 
 logger = logging.getLogger(__name__)
 
@@ -41,97 +42,15 @@ def process_invoices_dag():
 
     @isolated_task
     def extract_invoices(conn: dict) -> list[dict]:
-        import logging
-        import pandas as pd
-        from sqlalchemy import create_engine
+        from tasks.extract import extract_invoices as run_extract
 
-        logger = logging.getLogger(__name__)
-
-        try:
-            query = """
-                SELECT
-                    i.id,
-                    i.issue_date::text as issue_date,
-                    i.pos,
-                    json_build_object(
-                            'create', json_agg(
-                            json_build_object(
-                                    'node', json_build_object(
-                                    'itemId', ii.id::text,
-                                    'invoiceId', i.id::text,
-                                    'price', ii.price,
-                                    'quantity', ii.quantity
-                                            )
-                            )
-                                      )
-                    ) AS items
-                FROM invoices i
-                         JOIN invoice_items ii ON i.id = ii.invoice_id
-                GROUP BY i.id
-                ORDER BY i.id
-            """
-
-            engine = create_engine(conn["pg_uri"])
-
-            logger.info("Extracting invoices from PostgreSQL")
-            df = pd.read_sql(sql=query, con=engine)
-
-            logger.info(f"Extracted {len(df)} invoices from PostgreSQL")
-            return df.to_dict('records')
-
-        except Exception as e:
-            logger.error(f"Failed to extract invoices: {str(e)}")
-            raise
+        return run_extract(conn["pg_uri"])
 
     @isolated_task
     def load_to_neo4j(conn: dict, invoices: list[dict]) -> dict:
-        import logging
-        from gql import Client, gql
-        from gql.transport.requests import RequestsHTTPTransport
+        from tasks.load import load_invoices
 
-        logger = logging.getLogger(__name__)
-
-        if not invoices:
-            logger.info("No invoices to process")
-            return {"processed": 0, "failed": 0}
-
-        try:
-            transport = RequestsHTTPTransport(
-                url=conn["api_url"],
-                use_json=True,
-            )
-            client = Client(transport=transport, fetch_schema_from_transport=True)
-
-            mutation = gql("""
-                mutation CreateInvoices($input: [InvoiceCreateInput!]!) {
-                    createInvoices(input: $input) {
-                        invoices {
-                            id
-                            pos
-                            issued
-                        }
-                    }
-                }
-            """)
-
-            for invoice in invoices:
-                logger.info(f"Processing invoice: {invoice}")
-                input = {
-                    "id": str(invoice["id"]),
-                    "issued": invoice["issue_date"],
-                    "pos": invoice["pos"],
-                    "items": invoice["items"]
-                }
-                params = {"input": input}
-                result = client.execute(mutation, variable_values=params)
-                logger.info(result)
-
-            logger.info(f"Load complete: {len(invoices)}")
-            return {"processed": len(invoices), "failed": 0}
-
-        except Exception as e:
-            logger.error(f"Failed to load invoices: {str(e)}")
-            raise
+        return load_invoices(conn["api_url"], invoices)
 
     conn = resolve_connections()
     invoices = extract_invoices(conn)

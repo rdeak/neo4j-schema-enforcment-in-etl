@@ -2,7 +2,12 @@ FROM apache/airflow:2.7.3
 
 USER root
 
-RUN install -d -o 50000 -g 0 -m 775 /opt/venvs /opt/python /opt/airflow/dags /opt/airflow/common
+RUN install -d -o 50000 -g 0 -m 775 \
+      /opt/venvs \
+      /opt/python \
+      /opt/airflow/dags \
+      /opt/airflow/plugins \
+      /opt/tasks
 
 USER airflow
 
@@ -19,23 +24,25 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.12.7,source=/uv,target=/usr/local/bin/uv
     uv venv --python 3.11 --seed /opt/venvs/etl \
  && uv pip install --python /opt/venvs/etl/bin/python -r /tmp/requirements.txt
 
-USER root
-
-RUN set -eu; \
-    for PY in python /opt/venvs/etl/bin/python; do \
-      SP=$("$PY" -Bc 'import sysconfig; print(sysconfig.get_paths()["purelib"])'); \
-      printf '%s\n%s\n' /opt/airflow/dags /opt/airflow/common > "$SP/airflow-shared.pth"; \
-      echo "wrote $SP/airflow-shared.pth"; \
-      "$PY" -Bc "\
-import sys; \
-assert '/opt/airflow/dags' in sys.path, sys.path; \
-assert '/opt/airflow/common' in sys.path, sys.path; \
-print('shared path OK:', sys.version.split()[0], sys.prefix)"; \
-    done
-
-USER airflow
-
 WORKDIR /opt/airflow
 
 COPY dags ./dags
-COPY common ./common
+COPY plugins ./plugins
+COPY tasks /opt/tasks/tasks
+
+RUN set -eu; \
+    ETL_SP=$("$ETL_PYTHON" -Bc 'import sysconfig; print(sysconfig.get_paths()["purelib"])'); \
+    echo /opt/tasks > "$ETL_SP/etl-runtime.pth"; \
+    python -IBc "\
+import sys, importlib.util as u; \
+sys.path.insert(0, '/opt/airflow/dags'); \
+assert u.find_spec('operators') is not None, 'operators must be importable from the DAGs folder'; \
+assert u.find_spec('tasks') is None, 'tasks must NOT be importable from the Airflow runtime'; \
+print('airflow runtime OK:', sys.version.split()[0], sys.prefix)"; \
+    "$ETL_PYTHON" -IBc "\
+import sys, importlib.util as u; \
+assert '/opt/tasks' in sys.path, sys.path; \
+assert u.find_spec('tasks') is not None, 'tasks must be importable from the ETL runtime'; \
+assert u.find_spec('airflow') is None, 'airflow must NOT be installed in the ETL runtime'; \
+assert u.find_spec('operators') is None, 'operators must NOT be importable from the ETL runtime'; \
+print('ETL runtime OK:', sys.version.split()[0], sys.prefix)"

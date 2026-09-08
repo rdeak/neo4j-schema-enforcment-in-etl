@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from airflow.decorators.base import task_decorator_factory
 from airflow.decorators.external_python import _PythonExternalDecoratedOperator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from airflow.decorators.base import TaskDecorator
 
 ETL_PYTHON = os.environ.get("ETL_PYTHON", "/opt/venvs/etl/bin/python")
